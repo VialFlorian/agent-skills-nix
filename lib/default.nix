@@ -30,6 +30,19 @@ let
     hasSuffix
     ;
 
+  # Shared bash helper injected into both the local-install and sync scripts.
+  # Some destinations are populated by previous `copy-tree` runs that copied
+  # from the read-only Nix store, leaving the tree non-writable. rsync needs
+  # write permission to update those trees, so chmod before syncing.
+  ensureWritableTreeBash = ''
+    ensure_writable_tree() {
+      local path="$1"
+      if [ -e "$path" ] && [ ! -L "$path" ]; then
+        chmod -R u+w "$path"
+      fi
+    }
+  '';
+
   # Resolve the root path for a source, preferring an explicit path and
   # falling back to a flake input name.
   resolveSourceRoot = name: cfg:
@@ -469,6 +482,8 @@ SKILL_EOF
           return 1  # Not safe
         }
 
+        ${ensureWritableTreeBash}
+
         for i in "''${!targets[@]}"; do
           IFS="|" read -r name structure dest <<< "''${targets[$i]}"
           if [ -n "''${override[$i]:-}" ]; then
@@ -500,6 +515,7 @@ SKILL_EOF
                 rm -rf "$full_dest"
               fi
               mkdir -p "$full_dest"
+              ensure_writable_tree "$full_dest"
               ${pkgs.rsync}/bin/rsync -a --delete ${excludeFlags} "$bundle/" "$full_dest/"
               # Ensure dest is writable so agents can create subdirectories (e.g., .system)
               chmod u+w "$full_dest"
@@ -509,6 +525,7 @@ SKILL_EOF
                 rm -rf "$full_dest"
               fi
               mkdir -p "$full_dest"
+              ensure_writable_tree "$full_dest"
               ${pkgs.rsync}/bin/rsync -aL --delete ${excludeFlags} "$bundle/" "$full_dest/"
               # Ensure dest is writable so agents can create subdirectories (e.g., .system)
               chmod u+w "$full_dest"
@@ -542,6 +559,7 @@ SKILL_EOF
               rm -rf "$full_dest"
             fi
             mkdir -p "$full_dest"
+            ensure_writable_tree "$full_dest"
             ${pkgs.rsync}/bin/rsync -aL --delete ${excludeFlags} "$bundle/" "$full_dest/"
             # Ensure dest is writable so agents can create subdirectories (e.g., .system)
             chmod u+w "$full_dest"
@@ -593,6 +611,8 @@ SKILL_EOF
         exit 1
       fi
 
+      ${ensureWritableTreeBash}
+
       sync_dest() {
         local dest="$1"
         local structure="$2"
@@ -605,12 +625,14 @@ SKILL_EOF
             ;;
           symlink-tree)
             mkdir -p "$dest"
+            ensure_writable_tree "$dest"
             ${pkgs.rsync}/bin/rsync -a --delete ${excludeFlags} "$bundle/" "$dest/"
             # Ensure dest is writable so agents can create subdirectories (e.g., .system)
             chmod u+w "$dest"
             ;;
           copy-tree)
             mkdir -p "$dest"
+            ensure_writable_tree "$dest"
             ${pkgs.rsync}/bin/rsync -aL --delete ${excludeFlags} "$bundle/" "$dest/"
             # Ensure dest is writable so agents can create subdirectories (e.g., .system)
             chmod u+w "$dest"
