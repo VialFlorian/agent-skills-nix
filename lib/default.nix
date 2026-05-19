@@ -30,6 +30,18 @@ let
     hasSuffix
     ;
 
+  isUnsafeRelPath = rel:
+    hasPrefix "/" rel
+    || rel == ".."
+    || hasPrefix "../" rel
+    || hasInfix "/../" rel
+    || hasSuffix "/.." rel;
+
+  assertSafeRelPath = ctx: rel:
+    if isUnsafeRelPath rel then
+      throw "agent-skills: ${ctx} '${rel}' must be relative and must not traverse outside the source root"
+    else rel;
+
   # Shared bash helper injected into both the local-install and sync scripts.
   # Some destinations are populated by previous `copy-tree` runs that copied
   # from the read-only Nix store, leaving the tree non-writable. rsync needs
@@ -79,7 +91,8 @@ let
   # null = unlimited (capped internally at 100 to guard against symlink loops).
   discoverSource = name: cfg:
     let
-      skillsRoot' = resolveSourceRoot name cfg + "/${cfg.subdir or "."}";
+      subdir = assertSafeRelPath "source ${name} subdir" (cfg.subdir or ".");
+      skillsRoot' = resolveSourceRoot name cfg + "/${subdir}";
       skillsRoot = if !pathExists skillsRoot' then
         throw "agent-skills: source ${name} subdir ${toString skillsRoot'} does not exist"
       else skillsRoot';
@@ -227,8 +240,9 @@ let
             if sources ? ${srcName} then sources.${srcName}
             else throw "agent-skills: skill ${name} references missing source ${srcName}";
           srcRoot = resolveSourceRoot srcName sourceCfg;
-          subdir = sourceCfg.subdir or ".";
-          rel = cfg.path or name;
+          subdir = assertSafeRelPath "source ${srcName} subdir" (sourceCfg.subdir or ".");
+          rel' = cfg.path or name;
+          rel = if rel' == "." then "." else assertSafeRelPath "skill ${name} path" rel';
           absPath =
             if subdir == "." && rel == "." then srcRoot
             else if subdir == "." then srcRoot + "/${rel}"

@@ -151,6 +151,7 @@ Now `nix develop` will automatically install skills to your project directory.
 - Disallows source `idPrefix` values ending with `/`.
 - Verifies `SKILL.md` for discovered and explicit skills.
 - Fails on duplicate IDs across sources.
+- Rejects `..` traversal in source `subdir` and explicit skill `path` values.
 - Caps recursion at 100 levels when maxDepth is null to guard against symlink loops.
 - Activation scripts always `mkdir -p` and use `rsync -a --delete` by default.
 

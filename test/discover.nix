@@ -28,6 +28,28 @@ let
   flatCatalog = agentLib.discoverCatalog flatSources;
   restrictedCatalog = agentLib.discoverCatalog restrictedSources;
 
+  # Unsafe traversal in explicit skill `path` must be rejected at selection time.
+  unsafePathSelection = builtins.tryEval (builtins.deepSeq
+    (agentLib.selectSkills {
+      catalog = {};
+      allowlist = [];
+      sources = flatSources;
+      skills = {
+        evil = { from = "flat"; path = "../escape"; };
+      };
+    })
+    true);
+
+  # Unsafe traversal in source `subdir` must be rejected at discovery time.
+  unsafeSubdirDiscovery = builtins.tryEval (builtins.deepSeq
+    (agentLib.discoverCatalog {
+      bad = {
+        path = ./fixtures/nested-skills;
+        subdir = "../outside-shared";
+      };
+    })
+    true);
+
   # Test duplicate detection: two sources with same subdir structure
   duplicateSources = {
     source-a = {
@@ -198,6 +220,22 @@ pkgs.runCommand "agent-skills-discover-test" {} ''
   }
   echo "Bundle nested directory structure is correct"
   echo "Test 7 passed!"
+
+  echo ""
+  echo "=== Test 8: Path-traversal rejection in subdir and explicit path ==="
+  ${if unsafePathSelection.success then ''
+    echo "ERROR: explicit skill path '../escape' should have been rejected"
+    exit 1
+  '' else ''
+    echo "Correctly rejected unsafe explicit skill path"
+  ''}
+  ${if unsafeSubdirDiscovery.success then ''
+    echo "ERROR: source subdir '../outside-shared' should have been rejected"
+    exit 1
+  '' else ''
+    echo "Correctly rejected unsafe source subdir"
+  ''}
+  echo "Test 8 passed!"
 
   echo ""
   echo "All discover tests passed!"
